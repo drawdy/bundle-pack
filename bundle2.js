@@ -22,6 +22,13 @@ var fs = require('fs');
 var cp = require('child_process');
 var path = require('path');
 const { exit } = require('process');
+const HttpsProxyAgent = require('https-proxy-agent');
+const axiosDefaultConfig = {
+    baseURL: 'https://r.cnpmjs.org',
+    proxy: false,
+    httpsAgent: new HttpsProxyAgent('http://10.0.2.2:41091')
+};
+const axios = require ('axios').create(axiosDefaultConfig);
 
 if (process.argv.length != 3) {
   console.log("Usage: %s [package name]", process.argv[1]);
@@ -29,30 +36,7 @@ if (process.argv.length != 3) {
 }
 
 var packageName = process.argv[2];
-
-// Copy dependencies to bundleDependencies
-function rewritePackageJSON(fileName) {
-  var contents = fs.readFileSync(fileName);
-  var json = JSON.parse(contents);
-  if (json.dependencies) {
-    json.bundleDependencies = Object.keys(json.dependencies);
-    fs.writeFileSync(fileName, JSON.stringify(json, null, 2));  
-  }
-}
-
-function passDependencies(fileName) {
-  var contents = fs.readFileSync(fileName);
-  var json = JSON.parse(contents);
-
-  let deps = []
-  if (json.dependencies) {
-    for(let [key, value] of Object.entries(json.dependencies)) {
-      value = value.replace("^", "")
-      deps.push(`${key}@${value}`)
-    }
-  }
-  return deps
-}
+const npmRegistry = "https://registry.npmjs.org"
 
 // change work directory
 const packsDirName = 'packs'
@@ -85,39 +69,38 @@ function doPack(pkgName, depth) {
 
   let packageName= pkgName
   let pkgWithVer = pkgName
+  let packageVersion = 'latest'
   if (packageName.includes("@")) {
     const parts = packageName.split('@')
     packageName = parts[0]
     packageVersion = parts[1]
   }
-  if(!packageName){
-    return
-  }
 
-  // Install the package from the online registry
-  cp.exec('npm install ' + pkgWithVer, {maxBuffer: 1024 * 500}, function(err, stdout, stderr) {
-    // console.log(stdout);
-    console.error(stderr);
-    
+  cp.exec('npm pack ' + pkgWithVer, {maxBuffer: 1024 * 500}, function(err, stdout, stderr) {
+    console.log(stdout);
+    console.error(stderr); 
+  
     if (err) {
-      console.log("Error executing npm install: ", err);
-      // process.exit(0);
+      console.log("Error executing npm pack: ", err);
+      // process.exit
       return
     }
+  });
 
-    cp.exec('npm pack ' + pkgWithVer, {maxBuffer: 1024 * 500}, function(err, stdout, stderr) {
-      // console.log(stdout);
-      console.error(stderr); 
-    
-      if (err) {
-        console.log("Error executing npm pack: ", err);
-        // process.exit
-        return
+  axios.get(`${packageName}/${packageVersion}`)
+  .then(({data}) => {
+    if(data.dependencies){
+      let deps = []
+      for(let [key, value] of Object.entries(data.dependencies)) {
+        value = value.replace("^", "")
+        deps.push(`${key}@${value}`)
       }
-    });
 
-    let deps = passDependencies(path.join('node_modules', packageName, 'package.json'))
-    packDeps(deps, depth + 1)
+      packDeps(deps, depth+1)
+    }
+  })
+  .catch(err => {
+    console.log("error: ", err)
   })
 }
 
