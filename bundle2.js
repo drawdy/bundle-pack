@@ -29,12 +29,6 @@ if (process.argv.length != 3) {
 }
 
 var packageName = process.argv[2];
-var pkgWithVer = packageName
-if (packageName.includes("@")) {
-  const parts = packageName.split('@')
-  packageName = parts[0]
-  packageVersion = parts[1]
-}
 
 // Copy dependencies to bundleDependencies
 function rewritePackageJSON(fileName) {
@@ -56,7 +50,6 @@ function passDependencies(fileName) {
       value = value.replace("^", "")
       deps.push(`${key}@${value}`)
     }
-    console.log("deps: ", deps)
   }
   return deps
 }
@@ -72,45 +65,64 @@ if(!fs.existsSync(packsDirName)){
   })
 }
 
-// Install the package from the online registry
-cp.exec('npm install ' + pkgWithVer, function(err, stdout, stderr) {
-  console.log(stdout);
-  console.error(stderr);
-  
-  if (err) {
-    console.log("Error executing npm install: ", err);
-    process.exit(0);
+// pack dependencies recursively
+function packDeps(deps, depth) {
+  console.log("deps: ", deps)
+  console.log("depth: ", depth)
+  if (!deps || deps.length == 0 || depth > 10) {
+    return
   }
-  
-  // Set bundleDependencies for the package
-  // rewritePackageJSON(path.join('node_modules', packageName, 'package.json'));
-  
-  let deps = passDependencies(path.join('node_modules', packageName, 'package.json'))
-  for(pn of deps){
-    cp.exec('npm pack ' + pn, function(err, stdout, stderr){
-      console.log(stdout);
+
+  for (pkgName of deps) {
+    doPack(pkgName, depth)
+  }
+}
+
+function doPack(pkgName, depth) {
+  if(!pkgName){
+    return
+  }
+
+  let packageName= pkgName
+  let pkgWithVer = pkgName
+  if (packageName.includes("@")) {
+    const parts = packageName.split('@')
+    packageName = parts[0]
+    packageVersion = parts[1]
+  }
+  if(!packageName){
+    return
+  }
+
+  // Install the package from the online registry
+  cp.exec('npm install ' + pkgWithVer, {maxBuffer: 1024 * 500}, function(err, stdout, stderr) {
+    // console.log(stdout);
+    console.error(stderr);
+    
+    if (err) {
+      console.log("Error executing npm install: ", err);
+      // process.exit(0);
+      return
+    }
+
+    cp.exec('npm pack ' + pkgWithVer, {maxBuffer: 1024 * 500}, function(err, stdout, stderr) {
+      // console.log(stdout);
       console.error(stderr); 
-    })
+    
+      if (err) {
+        console.log("Error executing npm pack: ", err);
+        // process.exit
+        return
+      }
+    });
 
-    if (err) {
-      console.log("Error executing npm pack " + pn + ":", err);
-      process.exit(1);
-    }
-  }
+    let deps = passDependencies(path.join('node_modules', packageName, 'package.json'))
+    packDeps(deps, depth + 1)
+  })
+}
 
-  // Create a new .tgz file which bundles all dependencies
-  cp.exec('npm pack ' +packageName, function(err, stdout, stderr) {
-    console.log(stdout);
-    console.error(stderr); 
+packDeps([packageName], 0)
 
-    if (err) {
-      console.log("Error executing npm pack: ", err);
-    }
-    else {
-      console.log("Bundled package " + packageName);
-    }
-  });
-})
 
 /*
 
