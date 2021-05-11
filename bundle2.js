@@ -78,7 +78,11 @@ function doPack(pkgName, depth) {
 
   // pack packages that not exist
   let fn = packageName.replace('@', '')
-  fn = fn.replace('/', '-') + '-' + packageVersion.replace('~', '') + '.tgz'
+  let verpart = ''
+  if (packageVersion != 'latest') {
+    verpart = '-' + packageVersion.replace('~', '')
+  }
+  fn = fn.replace('/', '-') + verpart + '.tgz'
   newFN = path.join(packsDirName, fn)
   if (!fs.existsSync(newFN)) {
     cp.exec('npm pack ' + pkgWithVer, { maxBuffer: 1024 * 500 }, function (err, stdout, stderr) {
