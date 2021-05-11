@@ -24,25 +24,26 @@ var path = require('path');
 const { exit } = require('process');
 const HttpsProxyAgent = require('https-proxy-agent');
 const axiosDefaultConfig = {
-    baseURL: 'https://r.cnpmjs.org',
-    proxy: false,
-    httpsAgent: new HttpsProxyAgent('http://10.0.2.2:41091')
+  baseURL: 'https://r.cnpmjs.org',
+  proxy: false,
+  httpsAgent: new HttpsProxyAgent('http://10.0.2.2:41091')
 };
-const axios = require ('axios').create(axiosDefaultConfig);
+const axios = require('axios').create(axiosDefaultConfig);
 
 if (process.argv.length != 3) {
   console.log("Usage: %s [package name]", process.argv[1]);
   process.exit(0);
 }
 
-var packageName = process.argv[2];
-const npmRegistry = "https://registry.npmjs.org"
+var pkg = process.argv[2];
+const MAX_DEPTH = 10
+const checkedPkgs = []
 
-// change work directory
+// create tarball directory
 const packsDirName = 'packs'
-if(!fs.existsSync(packsDirName)){
+if (!fs.existsSync(packsDirName)) {
   fs.mkdirSync(packsDirName, (err) => {
-    if(err){
+    if (err) {
       console.log("Error making packs directory: ", err)
       process.exit(1)
     }
@@ -51,9 +52,8 @@ if(!fs.existsSync(packsDirName)){
 
 // pack dependencies recursively
 function packDeps(deps, depth) {
-  console.log("deps: ", deps)
-  console.log("depth: ", depth)
-  if (!deps || deps.length == 0 || depth > 10) {
+  console.log("depth: ", depth, "deps: ", deps)
+  if (!deps || deps.length == 0 || depth > MAX_DEPTH) {
     return
   }
 
@@ -63,48 +63,65 @@ function packDeps(deps, depth) {
 }
 
 function doPack(pkgName, depth) {
-  if(!pkgName){
+  if (!pkgName) {
     return
   }
 
-  let packageName= pkgName
+  let packageName = pkgName
   let pkgWithVer = pkgName
   let packageVersion = 'latest'
   if (packageName.includes("@")) {
-    const parts = packageName.split('@')
-    packageName = parts[0]
-    packageVersion = parts[1]
+    let last = pkgWithVer.lastIndexOf('@')
+    packageName = pkgWithVer.substring(0, last)
+    packageVersion = pkgWithVer.substring(last + 1)
   }
 
-  cp.exec('npm pack ' + pkgWithVer, {maxBuffer: 1024 * 500}, function(err, stdout, stderr) {
-    console.log(stdout);
-    console.error(stderr); 
-  
-    if (err) {
-      console.log("Error executing npm pack: ", err);
-      // process.exit
-      return
-    }
-  });
+  // pack packages that not exist
+  let fn = packageName.replace('@', '')
+  fn = fn.replace('/', '-') + '-' + packageVersion.replace('~', '') + '.tgz'
+  newFN = path.join(packsDirName, fn)
+  if (!fs.existsSync(newFN)) {
+    cp.exec('npm pack ' + pkgWithVer, { maxBuffer: 1024 * 500 }, function (err, stdout, stderr) {
+      console.log(stdout);
+      console.error(stderr);
 
-  axios.get(`${packageName}/${packageVersion}`)
-  .then(({data}) => {
-    if(data.dependencies){
-      let deps = []
-      for(let [key, value] of Object.entries(data.dependencies)) {
-        value = value.replace("^", "")
-        deps.push(`${key}@${value}`)
+      if (err) {
+        console.log("Error executing npm pack: ", err);
+        // process.exit
+        return
       }
 
-      packDeps(deps, depth+1)
-    }
-  })
-  .catch(err => {
-    console.log("error: ", err)
-  })
+      try {
+        fs.renameSync(fn, newFN)
+      } catch (err) {
+        console.log("Error rename file: ", err)
+      }
+    });
+  }
+
+  if (checkedPkgs.includes(pkgWithVer)) {
+    return
+  }
+
+  axios.get(`${packageName}/${packageVersion}`)
+    .then(({ data }) => {
+      if (data.dependencies) {
+        let deps = []
+        for (let [key, value] of Object.entries(data.dependencies)) {
+          value = value.replace("^", "")
+          deps.push(`${key}@${value}`)
+        }
+
+        checkedPkgs.push(pkgWithVer)
+        packDeps(deps, depth + 1)
+      }
+    })
+    .catch(err => {
+      console.log("error: ", err)
+    })
 }
 
-packDeps([packageName], 0)
+packDeps([pkg], 0)
 
 
 /*
