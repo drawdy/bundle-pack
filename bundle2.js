@@ -31,11 +31,15 @@ const axiosDefaultConfig = {
 const axios = require('axios').create(axiosDefaultConfig);
 
 if (process.argv.length != 3) {
-  console.log("Usage: %s [package.json path]", process.argv[1]);
+  console.log("Usage: %s [--pkg=pkgName] [--file=package.json path]", process.argv[1]);
   process.exit(0);
 }
 
-const metaFile = process.argv[2];
+const argParts = process.argv[2].split('=');
+if (argParts.length != 2) {
+  process.exit(0)
+}
+
 const MAX_DEPTH = 10
 const checkedPkgs = []
 
@@ -145,7 +149,16 @@ function packCallback(err, stdout, stderr) {
   }
 }
 
-packDeps(passDependencies(metaFile), 0)
+let initDeps = []
+if (argParts[0] == '--pkg') {
+  initDeps.push(argParts[1])
+}
+
+if (argParts[0] == '--file') {
+  initDeps = passDependencies(argParts[1])
+}
+
+packDeps(initDeps, 0)
 
 
 /*
