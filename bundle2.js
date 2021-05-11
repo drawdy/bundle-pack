@@ -31,11 +31,11 @@ const axiosDefaultConfig = {
 const axios = require('axios').create(axiosDefaultConfig);
 
 if (process.argv.length != 3) {
-  console.log("Usage: %s [package name]", process.argv[1]);
+  console.log("Usage: %s [package.json path]", process.argv[1]);
   process.exit(0);
 }
 
-var pkg = process.argv[2];
+const metaFile = process.argv[2];
 const MAX_DEPTH = 10
 const checkedPkgs = []
 
@@ -48,6 +48,21 @@ if (!fs.existsSync(packsDirName)) {
       process.exit(1)
     }
   })
+}
+
+function passDependencies(fileName) {
+  var contents = fs.readFileSync(fileName);
+  var json = JSON.parse(contents);
+
+  let deps = []
+  if (json.dependencies) {
+    for(let [key, value] of Object.entries(json.dependencies)) {
+      value = value.replace("^", "")
+      deps.push(`${key}@${value}`)
+    }
+    console.log("deps: ", deps)
+  }
+  return deps
 }
 
 // pack dependencies recursively
@@ -85,22 +100,10 @@ function doPack(pkgName, depth) {
   fn = fn.replace('/', '-') + verpart + '.tgz'
   newFN = path.join(packsDirName, fn)
   if (!fs.existsSync(newFN)) {
-    cp.exec('npm pack ' + pkgWithVer, { maxBuffer: 1024 * 500 }, function (err, stdout, stderr) {
-      console.log(stdout);
-      console.error(stderr);
-
-      if (err) {
-        console.log("Error executing npm pack: ", err);
-        // process.exit
-        return
-      }
-
-      try {
-        fs.renameSync(fn, newFN)
-      } catch (err) {
-        console.log("Error rename file: ", err)
-      }
-    });
+    cp.exec(`npm pack ${pkgWithVer}`, 
+    { maxBuffer: 1024 * 500 }, 
+    packCallback.bind({"oldPath": fn, "newPath": newFN}),
+    );
   }
 
   if (checkedPkgs.includes(pkgWithVer)) {
@@ -125,7 +128,24 @@ function doPack(pkgName, depth) {
     })
 }
 
-packDeps([pkg], 0)
+function packCallback(err, stdout, stderr) {
+  console.log(stdout);
+  console.error(stderr);
+
+  if (err) {
+    console.log("Error executing npm pack: ", err);
+    // process.exit
+    return
+  }
+
+  try {
+    fs.renameSync(this.oldPath, this.newPath)
+  } catch (err) {
+    console.log("Error rename file: ", err)
+  }
+}
+
+packDeps(passDependencies(metaFile), 0)
 
 
 /*

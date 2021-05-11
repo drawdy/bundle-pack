@@ -19,7 +19,7 @@ if (files.length == 0) {
 
 for (fn of files) {
     let tarball = path.join(dir, fn)
-    cp.exec('npm publish' + tarball, (error, stdout, stderr) => {
+    cp.exec('npm publish ' + tarball, (error, stdout, stderr) => {
         console.log(stdout)
         console.log(stderr)
 
