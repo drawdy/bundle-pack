@@ -54,17 +54,20 @@ if (!fs.existsSync(packsDirName)) {
   })
 }
 
-function passDependencies(fileName) {
+function passDependencies(fileName, isDev) {
   var contents = fs.readFileSync(fileName);
   var json = JSON.parse(contents);
 
   let deps = []
-  if (json.dependencies) {
-    for(let [key, value] of Object.entries(json.dependencies)) {
+  let dependencies = json.dependencies
+  if (isDev) {
+    dependencies = json.devDependencies
+  }
+  if (dependencies) {
+    for (let [key, value] of Object.entries(dependencies)) {
       value = value.replace("^", "")
       deps.push(`${key}@${value}`)
     }
-    console.log("deps: ", deps)
   }
   return deps
 }
@@ -103,33 +106,18 @@ function doPack(pkgName, depth) {
   }
   fn = fn.replace('/', '-') + verpart + '.tgz'
   newFN = path.join(packsDirName, fn)
-  if (!fs.existsSync(newFN)) {
-    cp.exec(`npm pack ${pkgWithVer}`, 
+  if (!fs.existsSync(newFN) && !checkedPkgs.includes(pkgWithVer)) {
+    cp.exec(`npm pack ${pkgWithVer}`,
+      { maxBuffer: 1024 * 500 },
     { maxBuffer: 1024 * 500 }, 
-    packCallback.bind({"oldPath": fn, "newPath": newFN}),
+      { maxBuffer: 1024 * 500 },
+      packCallback.bind({ "oldPath": fn, "newPath": newFN, "name": packageName, "version": packageVersion, "pkgWithVer": pkgWithVer, "depth": depth }),
     );
   }
 
-  if (checkedPkgs.includes(pkgWithVer)) {
-    return
-  }
-
-  axios.get(`${packageName}/${packageVersion}`)
-    .then(({ data }) => {
-      if (data.dependencies) {
-        let deps = []
-        for (let [key, value] of Object.entries(data.dependencies)) {
-          value = value.replace("^", "")
-          deps.push(`${key}@${value}`)
-        }
-
-        checkedPkgs.push(pkgWithVer)
-        packDeps(deps, depth + 1)
-      }
-    })
-    .catch(err => {
-      console.log("error: ", err)
-    })
+  // if (checkedPkgs.includes(pkgWithVer)) {
+  //   return
+  // }
 }
 
 function packCallback(err, stdout, stderr) {
@@ -138,8 +126,6 @@ function packCallback(err, stdout, stderr) {
 
   if (err) {
     console.log("Error executing npm pack: ", err);
-    // process.exit
-    return
   }
 
   try {
@@ -147,6 +133,23 @@ function packCallback(err, stdout, stderr) {
   } catch (err) {
     console.log("Error rename file: ", err)
   }
+
+  axios.get(`${this.name}/${this.version}`)
+    .then(({ data }) => {
+      if (data.dependencies) {
+        let deps = []
+        for (let [key, value] of Object.entries(data.dependencies)) {
+          value = value.replace("^", "")
+          deps.push(`${key}@${value}`)
+        }
+
+        checkedPkgs.push(this.pkgWithVer)
+        packDeps(deps, this.depth + 1)
+      }
+    })
+    .catch(err => {
+      console.log("error: ", err)
+    })
 }
 
 let initDeps = []
@@ -156,6 +159,10 @@ if (argParts[0] == '--pkg') {
 
 if (argParts[0] == '--file') {
   initDeps = passDependencies(argParts[1])
+}
+
+if (argParts[0] == '--devfile') {
+  initDeps = passDependencies(argParts[1], true)
 }
 
 packDeps(initDeps, 0)
