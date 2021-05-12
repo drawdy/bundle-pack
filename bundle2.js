@@ -42,6 +42,7 @@ if (argParts.length != 2) {
 
 const MAX_DEPTH = 10
 const checkedPkgs = []
+const packedFiles = new Set()
 
 // create tarball directory
 const packsDirName = 'packs'
@@ -96,62 +97,59 @@ function doPack(pkgName, depth) {
     let last = pkgWithVer.lastIndexOf('@')
     packageName = pkgWithVer.substring(0, last)
     packageVersion = pkgWithVer.substring(last + 1)
+    if (packageVersion.includes('*') || packageVersion.includes('x') || packageVersion.includes('X')) {
+      packageVersion = 'latest'
+    }
   }
 
   // pack packages that not exist
-  let fn = packageName.replace('@', '')
+  let pkgpart = packageName.replace('@', '')
+  pkgpart = pkgpart.replace('/', '-')
   let verpart = ''
   if (packageVersion != 'latest') {
     verpart = '-' + packageVersion.replace('~', '')
   }
-  fn = fn.replace('/', '-') + verpart + '.tgz'
-  newFN = path.join(packsDirName, fn)
-  if (!fs.existsSync(newFN) && !checkedPkgs.includes(pkgWithVer)) {
-    cp.exec(`npm pack ${pkgWithVer}`,
-      { maxBuffer: 1024 * 500 },
-    { maxBuffer: 1024 * 500 }, 
-      { maxBuffer: 1024 * 500 },
-      packCallback.bind({ "oldPath": fn, "newPath": newFN, "name": packageName, "version": packageVersion, "pkgWithVer": pkgWithVer, "depth": depth }),
-    );
-  }
-
-  // if (checkedPkgs.includes(pkgWithVer)) {
-  //   return
-  // }
-}
-
-function packCallback(err, stdout, stderr) {
-  console.log(stdout);
-  console.error(stderr);
-
-  if (err) {
-    console.log("Error executing npm pack: ", err);
-  }
-
-  try {
-    fs.renameSync(this.oldPath, this.newPath)
-  } catch (err) {
-    console.log("Error rename file: ", err)
-  }
-
-  axios.get(`${this.name}/${this.version}`)
-    .then(({ data }) => {
-      if (data.dependencies) {
-        let deps = []
-        for (let [key, value] of Object.entries(data.dependencies)) {
-          value = value.replace("^", "")
-          deps.push(`${key}@${value}`)
+  fn = pkgpart + verpart + '.tgz'
+  if (!packedFiles.has(fn) && !checkedPkgs.includes(pkgWithVer)) {
+    console.log("will do npm pack: ", pkgWithVer)
+    let out = cp.execSync(`npm pack ${pkgWithVer}`, { maxBuffer: 1024 * 500 });
+    console.log(out.toString())
+    
+    let realFiles = fs.readdirSync(process.cwd()).filter(f => f.includes(pkgpart))
+    if (realFiles.length == 0){
+      console.log("failed to get packed files for ", pkgWithVer)
+      return
+    }
+    
+    let rfn = realFiles[0]
+    newFN = path.join(packsDirName, rfn)
+    try {
+      fs.renameSync(rfn, newFN)
+      packedFiles.add(fn)
+    } catch (err) {
+      console.log("Error rename file: ", err)
+    }
+  
+    axios.get(`${packageName}/${packageVersion}`)
+      .then(({ data }) => {
+        if (data.dependencies) {
+          let deps = []
+          for (let [key, value] of Object.entries(data.dependencies)) {
+            value = value.replace("^", "")
+            deps.push(`${key}@${value}`)
+          }
+  
+          checkedPkgs.push(pkgWithVer)
+          packDeps(deps, depth + 1)
         }
-
-        checkedPkgs.push(this.pkgWithVer)
-        packDeps(deps, this.depth + 1)
-      }
-    })
-    .catch(err => {
-      console.log("error: ", err)
-    })
+      })
+      .catch(err => {
+        console.log("error: ", err)
+      })
+  }
 }
 
+/**************** program start ********************/
 let initDeps = []
 if (argParts[0] == '--pkg') {
   initDeps.push(argParts[1])
@@ -163,6 +161,12 @@ if (argParts[0] == '--file') {
 
 if (argParts[0] == '--devfile') {
   initDeps = passDependencies(argParts[1], true)
+}
+
+// init packed files set
+let pfs = fs.readdirSync(packsDirName)
+if (pfs && pfs.length > 0) {
+  pfs.forEach(f => packedFiles.add(f))
 }
 
 packDeps(initDeps, 0)
