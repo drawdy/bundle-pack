@@ -1,0 +1,28 @@
+{
+  "name": "bundle",
+  "version": "1.0.0",
+  "description": "",
+  "main": "bundle.js",
+  "dependencies": {
+    "axios": "^0.21.1",
+    "https-proxy-agent": "^5.0.0",
+    "lodash-es": "^4.17.21",
+    "monaco-editor": "^0.26.1",
+    "ng-monaco-editor": "^4.0.3",
+    "ngx-monaco-editor": "^12.0.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drawdy/bundle-pack.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/drawdy/bundle-pack/issues"
+  },
+  "homepage": "https://github.com/drawdy/bundle-pack#readme"
+}

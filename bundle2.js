@@ -21,7 +21,6 @@
 var fs = require('fs');
 var cp = require('child_process');
 var path = require('path');
-const { exit } = require('process');
 const HttpsProxyAgent = require('https-proxy-agent');
 const axiosDefaultConfig = {
   baseURL: 'https://r.cnpmjs.org',
@@ -66,7 +65,6 @@ function passDependencies(fileName, isDev) {
   }
   if (dependencies) {
     for (let [key, value] of Object.entries(dependencies)) {
-      value = value.replace("^", "")
       deps.push(`${key}@${value}`)
     }
   }
